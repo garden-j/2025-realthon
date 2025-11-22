@@ -243,18 +243,41 @@ async def get_dummy_histogram():
 # ---------------------------------------------------------
 # ... (기존 Student Profile, Courses, Items, Reviews, Scores API 생략 - 위 코드 유지) ...
 
-@app.post("/student-profile", response_model=StudentProfileResponse, tags=["Student Profile"])
-async def create_student_profile(profile: StudentProfileCreate, db: Session = Depends(get_db)):
-    new_profile = StudentProfileModel(preferences=profile.preferences)
-    db.add(new_profile)
-    db.commit()
-    db.refresh(new_profile)
-    return new_profile
+@app.put("/student-profile", response_model=StudentProfileResponse, tags=["Student Profile"])
+async def update_student_profile(profile: StudentProfileCreate, db: Session = Depends(get_db)):
+    """
+    학생 프로필을 업데이트합니다. ID 1번 학생의 프로필을 항상 업데이트합니다.
+    """
+    student_id = 1
+    existing_profile = db.query(StudentProfileModel).filter(StudentProfileModel.id == student_id).first()
+
+    if existing_profile:
+        # 기존 프로필 업데이트
+        existing_profile.preferences = profile.preferences
+        db.commit()
+        db.refresh(existing_profile)
+        return existing_profile
+    else:
+        # 프로필이 없으면 새로 생성
+        new_profile = StudentProfileModel(id=student_id, preferences=profile.preferences)
+        db.add(new_profile)
+        db.commit()
+        db.refresh(new_profile)
+        return new_profile
 
 
-@app.get("/student-profile", response_model=List[StudentProfileResponse], tags=["Student Profile"])
-async def get_all_student_profiles(db: Session = Depends(get_db)):
-    return db.query(StudentProfileModel).all()
+@app.get("/student-profile", response_model=StudentProfileResponse, tags=["Student Profile"])
+async def get_student_profile(db: Session = Depends(get_db)):
+    """
+    학생 프로필을 조회합니다. ID 1번 학생의 프로필을 반환합니다.
+    """
+    student_id = 1
+    profile = db.query(StudentProfileModel).filter(StudentProfileModel.id == student_id).first()
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="학생 프로필이 없습니다.")
+
+    return profile
 
 
 @app.post("/courses", response_model=CourseResponse, tags=["Courses"])
