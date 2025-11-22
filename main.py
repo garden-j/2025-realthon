@@ -16,6 +16,9 @@ import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
+# ---------------------------------------------------------
+# 0. Environment & OpenAI Setup
+# ---------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
 load_dotenv(dotenv_path=ENV_PATH)
@@ -205,11 +208,10 @@ class CumulativeHistogramResponse(BaseModel):
     my_percentile: Optional[float] = None
 
 
-app = FastAPI(
-        title="Smart Learning Strategy & Grade Toolkit API",
-        version="1.0.0",
-        description="SetTransformer 딥러닝 모델 기반 성적 분포 예측 및 OpenAI 기반 학습 전략 추천 시스템"
-)
+# ---------------------------------------------------------
+# 4. FastAPI App & ML Setup
+# ---------------------------------------------------------
+app = FastAPI(title="Hackathon API", version="1.0.0")
 
 app.add_middleware(
         CORSMiddleware,
