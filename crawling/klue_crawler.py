@@ -172,6 +172,12 @@ USER_PW = os.getenv("KLUE_PW") or getpass("KLUE 비밀번호: ")
 driver = create_driver()
 wait = WebDriverWait(driver, 10)
 
+TARGET_LECTURES = [
+    {"search_query": "COSE111", "professor_name": "유용재"},
+    {"search_query": "COSE341", "professor_name": "유혁"},
+    {"search_query": "COSE389", "professor_name": "이문영"},
+]
+
 try:
     # ---------------- 로그인 ----------------
     driver.get("https://klue.kr/")
@@ -199,37 +205,55 @@ try:
     time.sleep(5)
     print("로그인 후 URL:", driver.current_url)
 
-    # ---------------- 교수님 강의 목록 가져오기 ----------------
-    search_query = "COSE341"   # 검색창에 넣을 값
-    professor_name = "유혁"
+    # ---------------- 여러 강의에 대해 강의 목록 + 후기 크롤링 ----------------
+    rows = []  # 한 번에 모아서 마지막에 CSV로 저장
 
-    lecture_meta_list = get_lectures_by_prof(driver, search_query, professor_name)
-    print("찾은 강의들:", lecture_meta_list)
+    for target in TARGET_LECTURES:
+        search_query = target["search_query"]
+        professor_name = target["professor_name"]
+        print(f"\n=== {search_query} / {professor_name} 크롤링 시작 ===")
 
-    # ---------------- 강의평 크롤링 + CSV 저장 ----------------
-    rows = []  # year, semester, review 행들
+        # (1) 해당 학부번호 + 교수명으로 강의 목록 가져오기
+        lecture_meta_list = get_lectures_by_prof(driver, search_query, professor_name)
+        print("찾은 강의들:", lecture_meta_list)
 
-    for meta in lecture_meta_list:
-        lec_id = meta["id"]
-        year = meta["year"]
-        semester = meta["semester"]
+        # (2) 각 강의별 후기 크롤링
+        for meta in lecture_meta_list:
+            lec_id = meta["id"]
+            year = meta["year"]
+            semester = meta["semester"]
 
-        reviews = get_lecture_reviews(driver, lec_id)
-        print(f"강의 {lec_id} ({year}년 {semester}학기) 후기 {len(reviews)}개")
-
-        for rv in reviews:
-            rows.append(
-                {
-                    "year": year,
-                    "semester": semester,
-                    "review": rv,
-                }
+            reviews = get_lecture_reviews(driver, lec_id)
+            print(
+                f"강의 {lec_id} ({year}년 {semester}학기, {search_query}, {professor_name}) 후기 {len(reviews)}개"
             )
 
-    # CSV로 저장 (UTF-8 BOM 붙여서 엑셀에서도 한글 안깨지게)
-    output_file = "klue_reviews.csv"
+            for rv in reviews:
+                rows.append(
+                    {
+                        "course_code": search_query,     # 학부번호(과목번호)
+                        "professor": professor_name,     # 교수명
+                        "lecture_id": lec_id,            # klue 강의 ID
+                        "year": year,
+                        "semester": semester,
+                        "review": rv,
+                    }
+                )
+
+    # ---------------- CSV로 한 번에 저장 ----------------
+    output_file = "klue_reviews_multi.csv"
     with open(output_file, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=["year", "semester", "review"])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "course_code",
+                "professor",
+                "lecture_id",
+                "year",
+                "semester",
+                "review",
+            ],
+        )
         writer.writeheader()
         writer.writerows(rows)
 

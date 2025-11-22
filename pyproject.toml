@@ -20,3 +20,9 @@ dependencies = [
 
     "sqlalchemy>=2.0.0",
 ]
+
+[dependency-groups]
+dev = [
+    "selenium>=4.38.0",
+    "webdriver-manager>=4.0.2",
+]
