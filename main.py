@@ -398,7 +398,7 @@ def get_course_advice(course_id: int, objective_grade: str, db: Session = Depend
                         }
                     }
                 },
-                reasoning={"effort": "low"},
+                reasoning={"effort": "minimal"},
         )
 
         text = response.output_text.strip()
@@ -514,7 +514,7 @@ def get_semester_advice(
                         }
                     }
                 },
-                reasoning={"effort": "low"},
+                reasoning={"effort": "minimal"},
         )
 
         text = response.output_text.strip()
