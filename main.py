@@ -433,6 +433,11 @@ def get_course_advice(course_id: int, objective_grade: str, db: Session = Depend
         raise HTTPException(status_code=404, detail="리뷰 데이터가 없습니다.")
     course_reviews_str = "\n".join([f"- {r.content}" for r in reviews])
 
+    # --- 학생 프로필 정보 조회 (예: id=1 고정) ---
+    student_id = 1
+    profile = db.query(StudentProfileModel).filter(StudentProfileModel.id == student_id).first()
+    preferences = profile.preferences if profile and profile.preferences else None
+
     import json
     import re
 
@@ -441,6 +446,7 @@ def get_course_advice(course_id: int, objective_grade: str, db: Session = Depend
                 model="gpt-5-mini",
                 input=f"""
             목표성적: {objective_grade}
+            사용자 선호도 및 특성: {preferences}
             이건 이전 수강자들의 강의평 입니다. 각 강의평은 과목 ID와 함께 주어집니다.
             강의평에서 과제의 난이도와 관련한 정보를 추출해서 난이도를 정수형으로 추출해서 반환해주세요.
             강의평에서 시험의 난이도와 관련한 정보를 추출해서 난이도를 정수형으로 추출해서 반환해주세요.
@@ -456,6 +462,7 @@ def get_course_advice(course_id: int, objective_grade: str, db: Session = Depend
             조언에는 목표성적에 따라 각 과제와 시험 중 어느 곳에 집중해야 할지 정리해주세요.
             만약 하지 않아도 되는 과제가 있다면 그 과제는 하지 않아도 된다고 정리해주세요.
             만약 그런 과제가 없다면 이 부분은 언급하지 말아주세요.
+            사용자 선호도 및 특성을 고려하여 조언을 주세요.
             각 과제의 성적 비중이 어느 정도인지에 따라 각 과제와 시험 중 어느 곳에 집중해야 할지 정리해주세요.
             비중이 크고 작은 것을 판단할 때에는 강의평에 언급된 경우에 대한 내용을 참고해주세요.
             
@@ -537,6 +544,11 @@ def get_semester_advice(
 
         combined_reviews_text += f"\n[과목 {idx + 1}: {course.name} (목표: {grade})]\n{review_texts}\n"
 
+        # --- 학생 프로필 정보 조회 (예: id=1 고정) ---
+    student_id = 1
+    profile = db.query(StudentProfileModel).filter(StudentProfileModel.id == student_id).first()
+    preferences = profile.preferences if profile and profile.preferences else None
+
     if not combined_reviews_text:
         raise HTTPException(status_code=404, detail="선택한 과목들에 대한 리뷰 데이터가 없습니다.")
 
@@ -547,6 +559,7 @@ def get_semester_advice(
         response = openai_client.responses.create(
                 model="gpt-5-mini",
                 input=f"""
+            사용자 선호도 및 특성: {preferences}
             너는 학습 계획을 설계하는 조교이다.
 
             반드시 아래 JSON Schema를 만족하는 JSON 한 개만 출력해야 한다.
@@ -563,6 +576,7 @@ def get_semester_advice(
             2) effort_percent들의 합은 반드시 100이 되어야 한다.
             3) courses 배열의 course_index는 1, 2, 3 중 하나로 고정한다.
             4) 전체 학기에 대한 조언(overall_advice)은 1~2문장으로만 작성한다.
+            5) 사용자 선호도 및 특성을 고려하여 조언을 작성한다.
 
             --------- 수강평 시작 ---------
             {combined_reviews_text}
