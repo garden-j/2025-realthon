@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: realthon-redis
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - realthon-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: realthon-app
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - CACHE_TTL=3600
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./hackathon.db:/app/hackathon.db
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - realthon-network
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: realthon-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    networks:
+      - realthon-network
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+
+networks:
+  realthon-network:
+    driver: bridge

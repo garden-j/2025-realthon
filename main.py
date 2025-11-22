@@ -15,6 +15,9 @@ from typing import List, Optional
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+import redis
+import json
+import hashlib
 
 # ---------------------------------------------------------
 # 0. Environment & OpenAI Setup
@@ -31,6 +34,30 @@ if OPENAI_API_KEY:
     print("✅ OpenAI Client initialized successfully.")
 else:
     print("⚠ Warning: OPENAI_API_KEY not found.")
+
+# ---------------------------------------------------------
+# Redis Cache Setup
+# ---------------------------------------------------------
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # 기본 1시간
+
+redis_client = None
+
+try:
+    redis_client = redis.Redis(
+            host=REDIS_HOST,
+            port=REDIS_PORT,
+            db=REDIS_DB,
+            decode_responses=True,
+            socket_connect_timeout=2
+    )
+    redis_client.ping()
+    print("✅ Redis Client initialized successfully.")
+except (redis.ConnectionError, redis.TimeoutError) as e:
+    print(f"⚠ Warning: Redis connection failed ({e}). Cache disabled.")
+    redis_client = None
 
 DB_PATH = os.path.join(BASE_DIR, "hackathon.db")
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
@@ -176,6 +203,7 @@ class HistogramPredictResponse(BaseModel):
     total_students: Optional[int] = None
     my_score: Optional[float] = None
     my_percentile: Optional[float] = None
+    statistics: Optional[dict] = None
 
 
 class ReviewAnalysisResponse(BaseModel):
@@ -206,6 +234,7 @@ class CumulativeHistogramResponse(BaseModel):
     evaluation_items: List[dict]
     my_cumulative_score: Optional[float] = None
     my_percentile: Optional[float] = None
+    statistics: Optional[dict] = None
 
 
 # ---------------------------------------------------------
@@ -245,6 +274,146 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def calculate_histogram_statistics(histogram: dict) -> dict:
+    """
+    히스토그램으로부터 통계 정보를 계산합니다.
+
+    Args:
+        histogram: 히스토그램 딕셔너리 (예: {"0-10": 5, "10-20": 10, ...})
+
+    Returns:
+        통계 정보 딕셔너리:
+        - high: 최고 점수 구간의 중간값
+        - low: 최저 점수 구간의 중간값
+        - median: 중앙값
+        - mean: 평균값
+        - top_10_percent: 상위 10% 점수
+        - bottom_10_percent: 하위 10% 점수
+    """
+    # 히스토그램을 점수 리스트로 변환
+    scores = []
+    for bin_range, count in histogram.items():
+        bin_start = int(bin_range.split('-')[0])
+        bin_end = int(bin_range.split('-')[1])
+        bin_mid = (bin_start + bin_end) / 2
+        scores.extend([bin_mid] * int(count))
+
+    if not scores:
+        return None
+
+    scores.sort()
+    n = len(scores)
+
+    # 평균
+    mean = sum(scores) / n
+
+    # 중앙값
+    if n % 2 == 0:
+        median = (scores[n // 2 - 1] + scores[n // 2]) / 2
+    else:
+        median = scores[n // 2]
+
+    # 최고/최저
+    high = scores[-1]
+    low = scores[0]
+
+    # 상위 10%와 하위 10%
+    top_10_idx = max(0, int(n * 0.9))
+    bottom_10_idx = min(n - 1, int(n * 0.1))
+
+    top_10_percent = scores[top_10_idx]
+    bottom_10_percent = scores[bottom_10_idx]
+
+    return {
+            "high"             : high,
+            "low"              : low,
+            "median"           : median,
+            "mean"             : round(mean, 2),
+            "top_10_percent"   : top_10_percent,
+            "bottom_10_percent": bottom_10_percent
+    }
+
+
+# ---------------------------------------------------------
+# Cache Utility Functions
+# ---------------------------------------------------------
+def generate_cache_key(prefix: str, *args, **kwargs) -> str:
+    """
+    캐시 키를 생성합니다. 파라미터들을 해시하여 고유한 키를 만듭니다.
+
+    Args:
+        prefix: 캐시 키 접두사
+        *args: 위치 인자들
+        **kwargs: 키워드 인자들
+
+    Returns:
+        생성된 캐시 키
+    """
+    key_data = f"{prefix}:{args}:{sorted(kwargs.items())}"
+    key_hash = hashlib.md5(key_data.encode()).hexdigest()
+    return f"cache:{prefix}:{key_hash}"
+
+
+def get_cached_response(cache_key: str):
+    """
+    Redis에서 캐시된 응답을 가져옵니다.
+
+    Args:
+        cache_key: 캐시 키
+
+    Returns:
+        캐시된 데이터 (없으면 None)
+    """
+    if not redis_client:
+        return None
+
+    try:
+        cached_data = redis_client.get(cache_key)
+        if cached_data:
+            return json.loads(cached_data)
+    except Exception as e:
+        print(f"Cache get error: {e}")
+
+    return None
+
+
+def set_cached_response(cache_key: str, data: dict, ttl: int = None):
+    """
+    Redis에 응답을 캐시합니다.
+
+    Args:
+        cache_key: 캐시 키
+        data: 저장할 데이터
+        ttl: Time To Live (초 단위), None이면 기본값 사용
+    """
+    if not redis_client:
+        return
+
+    try:
+        ttl = ttl or CACHE_TTL
+        redis_client.setex(cache_key, ttl, json.dumps(data))
+    except Exception as e:
+        print(f"Cache set error: {e}")
+
+
+def invalidate_cache_pattern(pattern: str):
+    """
+    패턴에 일치하는 모든 캐시를 무효화합니다.
+
+    Args:
+        pattern: 캐시 키 패턴 (예: "cache:course_advice:*")
+    """
+    if not redis_client:
+        return
+
+    try:
+        keys = redis_client.keys(pattern)
+        if keys:
+            redis_client.delete(*keys)
+    except Exception as e:
+        print(f"Cache invalidation error: {e}")
 
 
 @app.get("/health", tags=["System"])
@@ -331,11 +500,19 @@ async def get_all_evaluation_items(db: Session = Depends(get_db)):
 
 @app.post("/course-reviews", response_model=CourseReviewResponse, tags=["Course Reviews"])
 async def create_course_review(review: CourseReviewCreate, db: Session = Depends(get_db)):
-    """새로운 과목 수강평을 생성합니다."""
+    """
+    새로운 과목 수강평을 생성합니다.
+    리뷰가 추가되면 해당 과목의 모든 캐시가 자동으로 무효화됩니다.
+    """
     new_review = CourseReviewModel(**review.dict())
     db.add(new_review)
     db.commit()
     db.refresh(new_review)
+
+    # 해당 과목의 모든 캐시 무효화
+    invalidate_cache_pattern(f"cache:course_advice:*")
+    invalidate_cache_pattern(f"cache:semester_advice:*")
+
     return new_review
 
 
@@ -409,6 +586,8 @@ def predict_histogram(evaluation_item_id: int, db: Session = Depends(get_db)):
 
         my_percentile = (cumulative_below / total) * 100 if total > 0 else None
 
+    statistics = calculate_histogram_statistics(histogram)
+
     return HistogramPredictResponse(
             evaluation_item_id=evaluation_item_id,
             histogram=histogram,
@@ -416,7 +595,8 @@ def predict_histogram(evaluation_item_id: int, db: Session = Depends(get_db)):
             sample_scores=score_values,
             total_students=total,
             my_score=my_score,
-            my_percentile=my_percentile
+            my_percentile=my_percentile,
+            statistics=statistics
     )
 
 
@@ -425,9 +605,19 @@ def get_course_advice(course_id: int, objective_grade: str, db: Session = Depend
     """
     과목의 수강평을 분석하여 목표 성적 달성을 위한 학습 조언을 제공합니다.
     OpenAI API를 사용하여 과제 및 시험 난이도 분석과 학습 전략을 생성합니다.
+    Redis 캐시를 사용하여 동일한 요청에 대한 응답 속도를 향상시킵니다.
     """
     if not openai_client:
         raise HTTPException(status_code=503, detail="OpenAI API Key missing")
+
+    # 캐시 키 생성
+    cache_key = generate_cache_key("course_advice", course_id, objective_grade)
+
+    # 캐시된 응답 확인
+    cached_response = get_cached_response(cache_key)
+    if cached_response:
+        return ReviewAnalysisResponse(**cached_response)
+
     reviews = db.query(CourseReviewModel).filter(CourseReviewModel.course_id == course_id).all()
     if not reviews:
         raise HTTPException(status_code=404, detail="리뷰 데이터가 없습니다.")
@@ -505,6 +695,10 @@ def get_course_advice(course_id: int, objective_grade: str, db: Session = Depend
                 text = json_match.group(0)
 
         result = json.loads(text)
+
+        # 결과를 캐시에 저장
+        set_cached_response(cache_key, result)
+
         return ReviewAnalysisResponse(**result)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=500,
@@ -522,6 +716,7 @@ def get_semester_advice(
     """
     여러 과목의 리뷰를 종합하여 전체 학기 공부 비중(%)과 전략을 짜줍니다.
     OpenAI API를 사용하여 각 과목별 노력 배분 비율과 전체 학기 조언을 생성합니다.
+    Redis 캐시를 사용하여 동일한 요청에 대한 응답 속도를 향상시킵니다.
 
     - course_ids의 순서와 target_grades의 순서는 일치해야 합니다.
     - 예: /semester-advice?course_ids=1&course_ids=2&target_grades=A+&target_grades=B0
@@ -531,6 +726,14 @@ def get_semester_advice(
 
     if len(course_ids) != len(target_grades):
         raise HTTPException(status_code=400, detail="과목 수와 목표 성적 수가 일치해야 합니다.")
+
+    # 캐시 키 생성
+    cache_key = generate_cache_key("semester_advice", tuple(course_ids), tuple(target_grades))
+
+    # 캐시된 응답 확인
+    cached_response = get_cached_response(cache_key)
+    if cached_response:
+        return SemesterPlanResponse(**cached_response)
 
     combined_reviews_text = ""
 
@@ -627,6 +830,10 @@ def get_semester_advice(
                 text = json_match.group(0)
 
         result = json.loads(text)
+
+        # 결과를 캐시에 저장
+        set_cached_response(cache_key, result)
+
         return SemesterPlanResponse(**result)
 
     except json.JSONDecodeError as e:
@@ -635,6 +842,28 @@ def get_semester_advice(
     except Exception as e:
         print(f"OpenAI Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"AI 분석 중 오류가 발생했습니다.")
+
+
+@app.delete("/cache/clear", tags=["System"])
+async def clear_cache(pattern: str = "*"):
+    """
+    Redis 캐시를 무효화합니다.
+
+    Args:
+        pattern: 삭제할 캐시 키 패턴 (기본값: "*" 모든 캐시)
+                 예: "cache:course_advice:*" - 과목 조언 캐시만 삭제
+                     "cache:semester_advice:*" - 학기 조언 캐시만 삭제
+
+    Returns:
+        삭제 결과 메시지
+    """
+    if not redis_client:
+        raise HTTPException(status_code=503, detail="Redis not available")
+
+    full_pattern = f"cache:{pattern}" if not pattern.startswith("cache:") else pattern
+    invalidate_cache_pattern(full_pattern)
+
+    return {"message": f"Cache cleared for pattern: {full_pattern}"}
 
 
 @app.get("/courses/{course_id}/cumulative-histogram", response_model=CumulativeHistogramResponse,
@@ -737,11 +966,14 @@ def get_cumulative_histogram(course_id: int, db: Session = Depends(get_db)):
 
             my_percentile = (cumulative_below / total_students) * 100 if total_students > 0 else None
 
+    statistics = calculate_histogram_statistics(cumulative_histogram)
+
     return CumulativeHistogramResponse(
             course_id=course_id,
             cumulative_histogram=cumulative_histogram,
             total_weight=total_weight,
             evaluation_items=evaluation_items_info,
             my_cumulative_score=my_cumulative_score,
-            my_percentile=my_percentile
+            my_percentile=my_percentile,
+            statistics=statistics
     )
