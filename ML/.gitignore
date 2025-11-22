@@ -1,0 +1,21 @@
+# Checkpoints and outputs
+checkpoints/
+outputs/
+*.pt
+*.pth
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Jupyter notebooks (if you add them later)
+*.ipynb_checkpoints/
+
+# MacOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
