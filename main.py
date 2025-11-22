@@ -1,3 +1,10 @@
+"""
+Smart Learning Strategy & Grade Toolkit API
+
+FastAPI 기반 성적 분포 예측 및 학습 전략 추천 시스템.
+SetTransformer 딥러닝 모델을 활용한 히스토그램 예측과 OpenAI API 기반 학습 조언을 제공합니다.
+"""
+
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -8,10 +15,6 @@ from typing import List, Optional
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
-
-# ---------------------------------------------------------
-# 0. Environment & OpenAI Setup
-# ---------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
 load_dotenv(dotenv_path=ENV_PATH)
@@ -25,9 +28,6 @@ if OPENAI_API_KEY:
 else:
     print("⚠ Warning: OPENAI_API_KEY not found.")
 
-# ---------------------------------------------------------
-# 1. Database Setup
-# ---------------------------------------------------------
 DB_PATH = os.path.join(BASE_DIR, "hackathon.db")
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 
@@ -38,16 +38,15 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-# ---------------------------------------------------------
-# 2. Database Models
-# ---------------------------------------------------------
 class StudentProfileModel(Base):
+    """학생 프로필 정보 저장 모델."""
     __tablename__ = "student_profile"
     id = Column(Integer, primary_key=True, index=True)
     preferences = Column(String)
 
 
 class OtherStudentScoreModel(Base):
+    """다른 학생들의 점수 데이터 저장 모델."""
     __tablename__ = "other_student_scores"
     id = Column(Integer, primary_key=True, index=True)
     evaluation_item_id = Column(Integer, index=True)
@@ -55,6 +54,7 @@ class OtherStudentScoreModel(Base):
 
 
 class CourseModel(Base):
+    """과목 정보 저장 모델."""
     __tablename__ = "courses"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
@@ -63,6 +63,7 @@ class CourseModel(Base):
 
 
 class EvaluationItemModel(Base):
+    """평가 항목(과제, 시험 등) 정보 저장 모델."""
     __tablename__ = "evaluation_items"
     id = Column(Integer, primary_key=True, index=True)
     course_id = Column(Integer, index=True)
@@ -73,6 +74,7 @@ class EvaluationItemModel(Base):
 
 
 class CourseReviewModel(Base):
+    """과목 수강평 저장 모델."""
     __tablename__ = "course_reviews"
     id = Column(Integer, primary_key=True, index=True)
     course_id = Column(Integer, index=True)
@@ -82,16 +84,13 @@ class CourseReviewModel(Base):
 Base.metadata.create_all(bind=engine)
 
 
-# ---------------------------------------------------------
-# 3. Pydantic Schemas
-# ---------------------------------------------------------
-# ... (기존 스키마 생략, 아래에 필요한 것들 포함됨) ...
-
 class StudentProfileCreate(BaseModel):
+    """학생 프로필 생성 요청 스키마."""
     preferences: str
 
 
 class StudentProfileResponse(BaseModel):
+    """학생 프로필 응답 스키마."""
     id: int
     preferences: str
 
@@ -100,11 +99,13 @@ class StudentProfileResponse(BaseModel):
 
 
 class ScoreCreate(BaseModel):
+    """학생 점수 생성 요청 스키마."""
     evaluation_item_id: int
     score: float
 
 
 class ScoreResponse(ScoreCreate):
+    """학생 점수 응답 스키마."""
     id: int
 
     class Config:
@@ -112,12 +113,14 @@ class ScoreResponse(ScoreCreate):
 
 
 class CourseCreate(BaseModel):
+    """과목 생성 요청 스키마."""
     name: str
     course_code: str
     total_students: Optional[int] = 99
 
 
 class CourseResponse(CourseCreate):
+    """과목 응답 스키마."""
     id: int
 
     class Config:
@@ -125,6 +128,7 @@ class CourseResponse(CourseCreate):
 
 
 class EvaluationItemCreate(BaseModel):
+    """평가 항목 생성 요청 스키마."""
     course_id: int
     name: str
     weight: int
@@ -133,6 +137,7 @@ class EvaluationItemCreate(BaseModel):
 
 
 class EvaluationItemResponse(EvaluationItemCreate):
+    """평가 항목 응답 스키마."""
     id: int
 
     class Config:
@@ -140,11 +145,13 @@ class EvaluationItemResponse(EvaluationItemCreate):
 
 
 class CourseReviewCreate(BaseModel):
+    """과목 수강평 생성 요청 스키마."""
     course_id: int
     content: str
 
 
 class CourseReviewResponse(CourseReviewCreate):
+    """과목 수강평 응답 스키마."""
     id: int
 
     class Config:
@@ -152,11 +159,12 @@ class CourseReviewResponse(CourseReviewCreate):
 
 
 class HistogramPredictRequest(BaseModel):
+    """히스토그램 예측 요청 스키마."""
     evaluation_item_id: int
-    # total_students: Optional[int] = None
 
 
 class HistogramPredictResponse(BaseModel):
+    """히스토그램 예측 응답 스키마."""
     evaluation_item_id: int
     histogram: dict
     num_samples: int
@@ -164,36 +172,39 @@ class HistogramPredictResponse(BaseModel):
     total_students: Optional[int] = None
 
 
-# [AI Advice Single]
 class ReviewAnalysisResponse(BaseModel):
+    """과목 수강평 분석 및 학습 조언 응답 스키마."""
     assignment_difficulty: int = Field(..., description="과제 난이도 (1~5)")
     exam_difficulty: int = Field(..., description="시험 난이도 (1~5)")
     summary: str = Field(..., description="시험/과제 공통 언급 요약")
     advice: str = Field(..., description="목표 성적 달성 조언")
 
 
-# [AI Advice Whole Semester] (New)
 class SemesterPlanItem(BaseModel):
+    """학기 계획 항목 스키마."""
     course_index: int = Field(..., description="입력된 과목 순서 (1부터 시작)")
     effort_percent: int = Field(..., description="투자해야 할 노력 비율 (0~100)")
 
 
 class SemesterPlanResponse(BaseModel):
+    """학기 전체 학습 계획 응답 스키마."""
     courses: List[SemesterPlanItem]
     overall_advice: str = Field(..., description="전체 학기 운영을 위한 1-2문장 조언")
 
 
 class CumulativeHistogramResponse(BaseModel):
+    """과목별 누적 히스토그램 응답 스키마."""
     course_id: int
     cumulative_histogram: dict
     total_weight: int
     evaluation_items: List[dict]
 
 
-# ---------------------------------------------------------
-# 4. FastAPI App & ML Setup
-# ---------------------------------------------------------
-app = FastAPI(title="Hackathon API", version="1.0.0")
+app = FastAPI(
+    title="Smart Learning Strategy & Grade Toolkit API",
+    version="1.0.0",
+    description="SetTransformer 딥러닝 모델 기반 성적 분포 예측 및 OpenAI 기반 학습 전략 추천 시스템"
+)
 
 app.add_middleware(
         CORSMiddleware,
@@ -208,6 +219,7 @@ ml_predictor = None
 
 @app.on_event("startup")
 async def startup_event():
+    """애플리케이션 시작 시 ML 모델을 로드합니다."""
     global ml_predictor
     try:
         from ML.model_loader import HistogramPredictor
@@ -220,6 +232,7 @@ async def startup_event():
 
 
 def get_db():
+    """데이터베이스 세션 의존성 주입 함수."""
     db = SessionLocal()
     try:
         yield db
@@ -227,21 +240,18 @@ def get_db():
         db.close()
 
 
-@app.get("/health")
+@app.get("/health", tags=["System"])
 async def health_check():
+    """서버 상태 확인 엔드포인트."""
     return {"status": "healthy"}
 
 
-@app.get("/dummy-histo")
+@app.get("/dummy-histo", tags=["Development"])
 async def get_dummy_histogram():
+    """테스트용 더미 히스토그램 데이터를 반환합니다."""
     return {"0-10" : 5, "10-20": 15, "20-30": 25, "30-40": 10, "40-50": 8, "50-60": 12, "60-70": 7, "70-80": 3,
             "80-90": 1, "90-100": 0}
 
-
-# ---------------------------------------------------------
-# 5. Existing Endpoints
-# ---------------------------------------------------------
-# ... (기존 Student Profile, Courses, Items, Reviews, Scores API 생략 - 위 코드 유지) ...
 
 @app.put("/student-profile", response_model=StudentProfileResponse, tags=["Student Profile"])
 async def update_student_profile(profile: StudentProfileCreate, db: Session = Depends(get_db)):
@@ -282,6 +292,7 @@ async def get_student_profile(db: Session = Depends(get_db)):
 
 @app.post("/courses", response_model=CourseResponse, tags=["Courses"])
 async def create_course(course: CourseCreate, db: Session = Depends(get_db)):
+    """새로운 과목을 생성합니다."""
     new_course = CourseModel(**course.dict())
     db.add(new_course)
     db.commit()
@@ -291,11 +302,13 @@ async def create_course(course: CourseCreate, db: Session = Depends(get_db)):
 
 @app.get("/courses", response_model=List[CourseResponse], tags=["Courses"])
 async def get_all_courses(db: Session = Depends(get_db)):
+    """모든 과목 목록을 조회합니다."""
     return db.query(CourseModel).all()
 
 
 @app.post("/evaluation-items", response_model=EvaluationItemResponse, tags=["Evaluation Items"])
 async def create_evaluation_item(item: EvaluationItemCreate, db: Session = Depends(get_db)):
+    """새로운 평가 항목(과제, 시험 등)을 생성합니다."""
     new_item = EvaluationItemModel(**item.dict())
     db.add(new_item)
     db.commit()
@@ -305,11 +318,13 @@ async def create_evaluation_item(item: EvaluationItemCreate, db: Session = Depen
 
 @app.get("/evaluation-items", response_model=List[EvaluationItemResponse], tags=["Evaluation Items"])
 async def get_all_evaluation_items(db: Session = Depends(get_db)):
+    """모든 평가 항목 목록을 조회합니다."""
     return db.query(EvaluationItemModel).all()
 
 
 @app.post("/course-reviews", response_model=CourseReviewResponse, tags=["Course Reviews"])
 async def create_course_review(review: CourseReviewCreate, db: Session = Depends(get_db)):
+    """새로운 과목 수강평을 생성합니다."""
     new_review = CourseReviewModel(**review.dict())
     db.add(new_review)
     db.commit()
@@ -319,11 +334,13 @@ async def create_course_review(review: CourseReviewCreate, db: Session = Depends
 
 @app.get("/course-reviews", response_model=List[CourseReviewResponse], tags=["Course Reviews"])
 async def get_all_course_reviews(db: Session = Depends(get_db)):
+    """모든 과목 수강평 목록을 조회합니다."""
     return db.query(CourseReviewModel).all()
 
 
 @app.post("/other-student-scores", response_model=ScoreResponse, tags=["Other Student Scores"])
 async def create_other_score(score_data: ScoreCreate, db: Session = Depends(get_db)):
+    """새로운 학생 점수 데이터를 생성합니다."""
     new_score = OtherStudentScoreModel(**score_data.dict())
     db.add(new_score)
     db.commit()
@@ -333,6 +350,7 @@ async def create_other_score(score_data: ScoreCreate, db: Session = Depends(get_
 
 @app.get("/other-student-scores", response_model=List[ScoreResponse], tags=["Other Student Scores"])
 async def get_other_scores(item_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """학생 점수 목록을 조회합니다. 평가 항목 ID로 필터링할 수 있습니다."""
     query = db.query(OtherStudentScoreModel)
     if item_id:
         query = query.filter(OtherStudentScoreModel.evaluation_item_id == item_id)
@@ -341,6 +359,10 @@ async def get_other_scores(item_id: Optional[int] = None, db: Session = Depends(
 
 @app.get("/predict-histogram", response_model=HistogramPredictResponse, tags=["ML Prediction"])
 def predict_histogram(evaluation_item_id: int, db: Session = Depends(get_db)):
+    """
+    평가 항목의 샘플 점수로부터 전체 학급의 성적 분포 히스토그램을 예측합니다.
+    SetTransformer 모델을 사용하여 10개 구간(0-10, 10-20, ..., 90-100)의 분포를 예측합니다.
+    """
     if ml_predictor is None:
         raise HTTPException(status_code=503, detail="ML model not loaded")
     scores = db.query(OtherStudentScoreModel).filter(
@@ -349,15 +371,14 @@ def predict_histogram(evaluation_item_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No scores found")
     score_values = [s.score for s in scores]
 
-    # total = request.total_students
-    # if total is None:
     total = None
     item = db.query(EvaluationItemModel).filter(EvaluationItemModel.id == evaluation_item_id).first()
     if item:
         course = db.query(CourseModel).filter(CourseModel.id == item.course_id).first()
         if course and course.total_students:
             total = course.total_students
-    if total is None: total = 99
+    if total is None:
+        total = 99
 
     try:
         histogram = ml_predictor.predict(score_values, total_students=total)
@@ -375,6 +396,10 @@ def predict_histogram(evaluation_item_id: int, db: Session = Depends(get_db)):
 
 @app.get("/courses/{course_id}/advice", response_model=ReviewAnalysisResponse, tags=["AI Advice"])
 def get_course_advice(course_id: int, objective_grade: str, db: Session = Depends(get_db)):
+    """
+    과목의 수강평을 분석하여 목표 성적 달성을 위한 학습 조언을 제공합니다.
+    OpenAI API를 사용하여 과제 및 시험 난이도 분석과 학습 전략을 생성합니다.
+    """
     if not openai_client:
         raise HTTPException(status_code=503, detail="OpenAI API Key missing")
     reviews = db.query(CourseReviewModel).filter(CourseReviewModel.course_id == course_id).all()
@@ -455,9 +480,6 @@ def get_course_advice(course_id: int, objective_grade: str, db: Session = Depend
         raise HTTPException(status_code=500, detail=f"AI Error: {str(e)}")
 
 
-# ---------------------------------------------------------
-# 6. [New] Whole Semester Strategy Endpoint
-# ---------------------------------------------------------
 @app.get("/semester-advice", response_model=SemesterPlanResponse, tags=["AI Advice"])
 def get_semester_advice(
         course_ids: List[int] = Query(..., description="수강할 과목 ID 리스트 (예: 1, 2, 3)"),
@@ -466,6 +488,8 @@ def get_semester_advice(
 ):
     """
     여러 과목의 리뷰를 종합하여 전체 학기 공부 비중(%)과 전략을 짜줍니다.
+    OpenAI API를 사용하여 각 과목별 노력 배분 비율과 전체 학기 조언을 생성합니다.
+
     - course_ids의 순서와 target_grades의 순서는 일치해야 합니다.
     - 예: /semester-advice?course_ids=1&course_ids=2&target_grades=A+&target_grades=B0
     """
@@ -475,13 +499,12 @@ def get_semester_advice(
     if len(course_ids) != len(target_grades):
         raise HTTPException(status_code=400, detail="과목 수와 목표 성적 수가 일치해야 합니다.")
 
-    # 1. 각 과목의 리뷰 데이터 수집
     combined_reviews_text = ""
 
     for idx, (cid, grade) in enumerate(zip(course_ids, target_grades)):
         course = db.query(CourseModel).filter(CourseModel.id == cid).first()
         if not course:
-            continue  # 없는 강의는 패스하거나 에러 처리
+            continue
 
         reviews = db.query(CourseReviewModel).filter(CourseReviewModel.course_id == cid).all()
         review_texts = "\n".join([f"- {r.content}" for r in reviews]) if reviews else "리뷰 없음"
@@ -491,7 +514,6 @@ def get_semester_advice(
     if not combined_reviews_text:
         raise HTTPException(status_code=404, detail="선택한 과목들에 대한 리뷰 데이터가 없습니다.")
 
-    # 2. OpenAI 프롬프트 호출
     import json
     import re
 
@@ -575,29 +597,24 @@ def get_semester_advice(
         raise HTTPException(status_code=500, detail=f"AI 분석 중 오류가 발생했습니다.")
 
 
-# ---------------------------------------------------------
-# 7. Cumulative Histogram Endpoint
-# ---------------------------------------------------------
 @app.get("/courses/{course_id}/cumulative-histogram", response_model=CumulativeHistogramResponse, tags=["ML Prediction"])
 def get_cumulative_histogram(course_id: int, db: Session = Depends(get_db)):
     """
-    과목의 모든 평가 항목들의 히스토그램을 가중치(weight)에 따라 누적합니다.
-    - 각 evaluation_item의 히스토그램에 weight를 곱한 뒤 모두 합산
-    - 예: 과제1(20%) + 과제2(20%) + 중간고사(30%) + ...
+    과목의 모든 평가 항목들의 히스토그램을 가중치에 따라 누적합니다.
+    각 evaluation_item의 히스토그램에 weight를 곱한 뒤 모두 합산하여 최종 성적 분포를 예측합니다.
+
+    예: 과제1(20%) + 과제2(20%) + 중간고사(30%) + 기말고사(30%)
     """
     if ml_predictor is None:
         raise HTTPException(status_code=503, detail="ML model not loaded")
 
-    # 1. 해당 과목의 모든 평가 항목 가져오기
     items = db.query(EvaluationItemModel).filter(EvaluationItemModel.course_id == course_id).all()
     if not items:
         raise HTTPException(status_code=404, detail="해당 과목의 평가 항목이 없습니다.")
 
-    # 2. total_students 가져오기
     course = db.query(CourseModel).filter(CourseModel.id == course_id).first()
     total_students = course.total_students if course and course.total_students else 99
 
-    # 3. 누적 히스토그램 초기화 (0-10, 10-20, ..., 90-100)
     cumulative_histogram = {
         "0-10": 0.0, "10-20": 0.0, "20-30": 0.0, "30-40": 0.0, "40-50": 0.0,
         "50-60": 0.0, "60-70": 0.0, "70-80": 0.0, "80-90": 0.0, "90-100": 0.0
@@ -606,15 +623,12 @@ def get_cumulative_histogram(course_id: int, db: Session = Depends(get_db)):
     total_weight = sum(item.weight for item in items)
     evaluation_items_info = []
 
-    # 4. 각 평가 항목의 히스토그램을 가중치만큼 곱해서 누적
     for item in items:
-        # 해당 evaluation_item_id의 학생 점수들 가져오기
         scores = db.query(OtherStudentScoreModel).filter(
             OtherStudentScoreModel.evaluation_item_id == item.id
         ).all()
 
         if not scores:
-            # 점수가 없으면 스킵
             evaluation_items_info.append({
                 "id": item.id,
                 "name": item.name,
@@ -627,11 +641,9 @@ def get_cumulative_histogram(course_id: int, db: Session = Depends(get_db)):
         score_values = [s.score for s in scores]
 
         try:
-            # ML 모델로 히스토그램 예측
             histogram = ml_predictor.predict(score_values, total_students=total_students)
 
-            # 히스토그램의 각 구간에 weight를 곱해서 누적
-            weight_ratio = item.weight / 100.0  # weight는 퍼센트이므로 100으로 나눔
+            weight_ratio = item.weight / 100.0
             for bin_range, count in histogram.items():
                 if bin_range in cumulative_histogram:
                     cumulative_histogram[bin_range] += count * weight_ratio
@@ -651,9 +663,6 @@ def get_cumulative_histogram(course_id: int, db: Session = Depends(get_db)):
                 "histogram": None,
                 "error": str(e)
             })
-
-    # 5. 누적 히스토그램 정규화 (선택사항: 합이 total_students가 되도록)
-    # 현재는 가중 평균으로 계산되므로 그대로 반환
 
     return CumulativeHistogramResponse(
         course_id=course_id,
