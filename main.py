@@ -5,6 +5,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from typing import List, Optional
+from ML.model_loader import HistogramPredictor
 
 # ---------------------------------------------------------
 # 1. Database Setup
@@ -123,6 +124,16 @@ class CourseReviewResponse(CourseReviewCreate):
     class Config:
         from_attributes = True
 
+# [ML Prediction] 
+class HistogramPredictRequest(BaseModel):
+    evaluation_item_id: int
+
+class HistogramPredictResponse(BaseModel):
+    evaluation_item_id: int
+    histogram: dict
+    num_samples: int
+    sample_scores: List[float]
+
 
 # ---------------------------------------------------------
 # 4. FastAPI App
@@ -136,6 +147,23 @@ app.add_middleware(
         allow_methods=["*"],
         allow_headers=["*"],
 )
+
+# ML Model (global)
+ml_predictor = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Load ML model on startup."""
+    global ml_predictor
+    try:
+        ml_predictor = HistogramPredictor(model_path="ML/best_model_nnj359uw.pt")
+        print("✓ ML model loaded successfully")
+        model_info = ml_predictor.get_model_info()
+        print(f"  Device: {model_info['device']}")
+        print(f"  Validation loss: {model_info['validation_loss']:.4f}")
+    except Exception as e:
+        print(f"⚠ Failed to load ML model: {e}")
+        ml_predictor = None
 
 def get_db():
     db = SessionLocal()
@@ -257,3 +285,59 @@ async def get_other_scores(item_id: Optional[int] = None, db: Session = Depends(
     if item_id:
         query = query.filter(OtherStudentScoreModel.evaluation_item_id == item_id)
     return query.all()
+
+
+# --- 6. ML Histogram Prediction ---
+@app.post("/predict-histogram", response_model=HistogramPredictResponse, tags=["ML Prediction"])
+async def predict_histogram(
+    request: HistogramPredictRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Predict score distribution histogram from other students' scores.
+
+    Args:
+        request: Contains evaluation_item_id
+        db: Database session
+
+    Returns:
+        Predicted histogram distribution
+    """
+    if ml_predictor is None:
+        raise HTTPException(status_code=503, detail="ML model not loaded")
+
+    # Get all scores for this evaluation item
+    scores = db.query(OtherStudentScoreModel).filter(
+        OtherStudentScoreModel.evaluation_item_id == request.evaluation_item_id
+    ).all()
+
+    if not scores:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No scores found for evaluation_item_id={request.evaluation_item_id}"
+        )
+
+    # Extract score values
+    score_values = [s.score for s in scores]
+
+    # Predict histogram
+    try:
+        histogram = ml_predictor.predict(score_values)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+    return HistogramPredictResponse(
+        evaluation_item_id=request.evaluation_item_id,
+        histogram=histogram,
+        num_samples=len(score_values),
+        sample_scores=score_values
+    )
+
+
+@app.get("/ml-model-info", tags=["ML Prediction"])
+async def get_ml_model_info():
+    """Get ML model information."""
+    if ml_predictor is None:
+        raise HTTPException(status_code=503, detail="ML model not loaded")
+
+    return ml_predictor.get_model_info()
