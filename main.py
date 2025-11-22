@@ -310,7 +310,7 @@ async def get_other_scores(item_id: Optional[int] = None, db: Session = Depends(
 
 
 @app.post("/predict-histogram", response_model=HistogramPredictResponse, tags=["ML Prediction"])
-async def predict_histogram(request: HistogramPredictRequest, db: Session = Depends(get_db)):
+def predict_histogram(request: HistogramPredictRequest, db: Session = Depends(get_db)):
     if ml_predictor is None:
         raise HTTPException(status_code=503, detail="ML model not loaded")
     scores = db.query(OtherStudentScoreModel).filter(
@@ -343,7 +343,7 @@ async def predict_histogram(request: HistogramPredictRequest, db: Session = Depe
     )
 
 @app.get("/courses/{course_id}/advice", response_model=ReviewAnalysisResponse, tags=["AI Advice"])
-async def get_course_advice(course_id: int, objective_grade: str, db: Session = Depends(get_db)):
+def get_course_advice(course_id: int, objective_grade: str, db: Session = Depends(get_db)):
     if not openai_client:
         raise HTTPException(status_code=503, detail="OpenAI API Key missing")
     reviews = db.query(CourseReviewModel).filter(CourseReviewModel.course_id == course_id).all()
@@ -426,7 +426,7 @@ async def get_course_advice(course_id: int, objective_grade: str, db: Session = 
 # 6. [New] Whole Semester Strategy Endpoint
 # ---------------------------------------------------------
 @app.get("/semester-advice", response_model=SemesterPlanResponse, tags=["AI Advice"])
-async def get_semester_advice(
+def get_semester_advice(
         course_ids: List[int] = Query(..., description="수강할 과목 ID 리스트 (예: 1, 2, 3)"),
         target_grades: List[str] = Query(..., description="각 과목의 목표 성적 (예: A+, A, B+)"),
         db: Session = Depends(get_db)
