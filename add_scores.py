@@ -6,6 +6,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "hackathon.db")
 
+
 def fill_data():
     if not os.path.exists(DB_PATH):
         print(f"❌ 오류: '{DB_PATH}' 파일을 찾을 수 없습니다. init_db.py를 먼저 실행해주세요.")
@@ -13,7 +14,7 @@ def fill_data():
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
+
     print("🔄 데이터 채우기 시작...")
 
     # ---------------------------------------------------------
@@ -50,19 +51,19 @@ def fill_data():
         # 각 강의마다 만들 평가 항목 리스트 (이름, 배점)
         # 예: 과제1(20%), 과제2(20%), 중간고사(30%) -> 총 70% (기말은 나중에 본다고 가정)
         items_to_create = [
-            ("과제 1", 20),
-            ("과제 2", 20),
-            ("중간고사", 30)
+                ("과제 1", 20),
+                ("과제 2", 20),
+                ("중간고사", 30)
         ]
 
         for item_name, weight in items_to_create:
             # 3-1. 평가 항목(Evaluation Item) Insert
             # my_score는 80로 설정, 필요하면 값 넣어도 됨
             cursor.execute('''
-                INSERT INTO evaluation_items (course_id, name, weight, my_score, is_submitted)
-                VALUES (?, ?, ?, 80, 1)
-            ''', (course_id, item_name, weight))
-            
+                           INSERT INTO evaluation_items (course_id, name, weight, my_score, is_submitted)
+                           VALUES (?, ?, ?, 80, 1)
+                           ''', (course_id, item_name, weight))
+
             # 방금 만든 항목의 ID 가져오기
             item_id = cursor.lastrowid
             total_items += 1
@@ -71,14 +72,14 @@ def fill_data():
             # 점수는 60점 ~ 100점 사이 랜덤 (중간고사는 좀 더 분포가 넓게)
             for _ in range(10):
                 if "중간고사" in item_name:
-                    score = round(random.uniform(40.0, 100.0), 1) # 시험은 점수 편차가 큼
+                    score = round(random.uniform(40.0, 100.0), 1)  # 시험은 점수 편차가 큼
                 else:
-                    score = round(random.uniform(70.0, 100.0), 1) # 과제는 보통 점수가 높음
-                
+                    score = round(random.uniform(70.0, 100.0), 1)  # 과제는 보통 점수가 높음
+
                 cursor.execute('''
-                    INSERT INTO other_student_scores (evaluation_item_id, score)
-                    VALUES (?, ?)
-                ''', (item_id, score))
+                               INSERT INTO other_student_scores (evaluation_item_id, score)
+                               VALUES (?, ?)
+                               ''', (item_id, score))
                 total_scores += 1
 
     conn.commit()
@@ -88,6 +89,7 @@ def fill_data():
     print(f"   - 대상 강의 수: {len(courses)}개")
     print(f"   - 생성된 평가 항목: {total_items}개")
     print(f"   - 생성된 학생 점수: {total_scores}개")
+
 
 if __name__ == "__main__":
     fill_data()

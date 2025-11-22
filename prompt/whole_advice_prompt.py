@@ -15,59 +15,59 @@ reviews = df[["lecture_id", "review"]].to_dict(orient="records")
 course_reviews = []
 for review in reviews:
     course_reviews.append(
-        {
-            "course_id": review["lecture_id"],
-            "content": review["review"],
-            "generosity": 0,
-            "id": len(course_reviews) + 1,
-        }
+            {
+                    "course_id" : review["lecture_id"],
+                    "content"   : review["review"],
+                    "generosity": 0,
+                    "id"        : len(course_reviews) + 1,
+            }
     )
 
 course_reviews_str = "\n".join(
-    [f"{review['content']}" for review in course_reviews]
+        [f"{review['content']}" for review in course_reviews]
 )
 
 objective_grade = ["A+", "A", "B+"]
 
 # ---------- JSON Schema 직접 정의 ----------
 semester_plan_schema = {
-    "type": "object",
-    "properties": {
-        "courses": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "course_index": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "maximum": 3,
-                        "description": "1, 2, 3 중 하나"
-                    },
-                    "effort_percent": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 100,
-                        "description": "해당 과목에 투자할 비율 (0~100 정수)"
-                    }
+        "type"                : "object",
+        "properties"          : {
+                "courses"       : {
+                        "type" : "array",
+                        "items": {
+                                "type"                : "object",
+                                "properties"          : {
+                                        "course_index"  : {
+                                                "type"       : "integer",
+                                                "minimum"    : 1,
+                                                "maximum"    : 3,
+                                                "description": "1, 2, 3 중 하나"
+                                        },
+                                        "effort_percent": {
+                                                "type"       : "integer",
+                                                "minimum"    : 0,
+                                                "maximum"    : 100,
+                                                "description": "해당 과목에 투자할 비율 (0~100 정수)"
+                                        }
+                                },
+                                "required"            : ["course_index", "effort_percent"],
+                                "additionalProperties": False
+                        }
                 },
-                "required": ["course_index", "effort_percent"],
-                "additionalProperties": False
-            }
+                "overall_advice": {
+                        "type"       : "string",
+                        "description": "세 과목 전체를 고려한 1~2문장의 전반적인 조언"
+                }
         },
-        "overall_advice": {
-            "type": "string",
-            "description": "세 과목 전체를 고려한 1~2문장의 전반적인 조언"
-        }
-    },
-    "required": ["courses", "overall_advice"],
-    "additionalProperties": False
+        "required"            : ["courses", "overall_advice"],
+        "additionalProperties": False
 }
 
 # ---------- 모델 호출 ----------
 response = client.responses.create(
-    model="gpt-5-mini",
-    input=f"""
+        model="gpt-5-mini",
+        input=f"""
     너는 학습 계획을 설계하는 조교이다.
 
     반드시 아래 JSON Schema를 만족하는 JSON 한 개만 출력해야 한다.
@@ -89,15 +89,15 @@ response = client.responses.create(
     {course_reviews_str}
     --------- 수강평 끝 ---------
     """,
-    text={
-        "verbosity": "low",
-        "format": {
-            "type": "json_schema",
-            "name": "semester_plan",
-            "schema": semester_plan_schema,  # ← 여기!
+        text={
+                "verbosity": "low",
+                "format"   : {
+                        "type"  : "json_schema",
+                        "name"  : "semester_plan",
+                        "schema": semester_plan_schema,  # ← 여기!
+                },
         },
-    },
-    reasoning={"effort": "low"},
+        reasoning={"effort": "low"},
 )
 
 # response = client.responses.create(

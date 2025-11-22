@@ -16,17 +16,18 @@ from pathlib import Path
 
 class MultiheadAttentionBlock(nn.Module):
     """Multi-head attention block."""
+
     def __init__(self, dim, num_heads, dropout=0.1):
         super().__init__()
         self.attention = nn.MultiheadAttention(dim, num_heads, dropout=dropout, batch_first=True)
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.ffn = nn.Sequential(
-            nn.Linear(dim, dim * 4),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(dim * 4, dim),
-            nn.Dropout(dropout),
+                nn.Linear(dim, dim * 4),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(dim * 4, dim),
+                nn.Dropout(dropout),
         )
 
     def forward(self, x, context=None):
@@ -40,6 +41,7 @@ class MultiheadAttentionBlock(nn.Module):
 
 class SetTransformerEncoder(nn.Module):
     """Set Transformer Encoder with Inducing Points."""
+
     def __init__(self, dim, num_heads, num_inducers, dropout=0.1):
         super().__init__()
         self.inducing_points = nn.Parameter(torch.randn(1, num_inducers, dim))
@@ -55,33 +57,35 @@ class SetTransformerEncoder(nn.Module):
 
 class FlexibleHistogramPredictor(nn.Module):
     """SetTransformer-based histogram predictor."""
+
     def __init__(self, hidden_dim=64, num_bins=10, num_heads=4, num_inducers=16, dropout=0.1):
         super().__init__()
         self.input_proj = nn.Linear(1, hidden_dim)
         self.encoder = SetTransformerEncoder(hidden_dim, num_heads, num_inducers, dropout)
         self.decoder = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, num_bins),
-            nn.Softmax(dim=-1)
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, num_bins),
+                nn.Softmax(dim=-1)
         )
 
     def forward(self, x):
         # x: [batch, sample_size] (0~1로 정규화된 점수)
-        x = x.unsqueeze(-1)           # [batch, sample_size, 1]
-        x = self.input_proj(x)        # [batch, sample_size, hidden_dim]
-        x = self.encoder(x)           # [batch, sample_size, hidden_dim]
-        x = x.mean(dim=1)             # [batch, hidden_dim]
-        return self.decoder(x)        # [batch, num_bins], 확률 분포
+        x = x.unsqueeze(-1)  # [batch, sample_size, 1]
+        x = self.input_proj(x)  # [batch, sample_size, hidden_dim]
+        x = self.encoder(x)  # [batch, sample_size, hidden_dim]
+        x = x.mean(dim=1)  # [batch, hidden_dim]
+        return self.decoder(x)  # [batch, num_bins], 확률 분포
 
 
 # ============================================================================
 # Synthetic 데이터 생성 & 지표 함수
 # ============================================================================
 
-NUM_STUDENTS = 30   # 한 반 학생 수
-NUM_BINS = 10       # 히스토그램 bin 수 (0-10, 10-20, ...)
+NUM_STUDENTS = 30  # 한 반 학생 수
+NUM_BINS = 10  # 히스토그램 bin 수 (0-10, 10-20, ...)
+
 
 def generate_class_scores() -> Tuple[np.ndarray, str]:
     """
@@ -178,7 +182,7 @@ def evaluate_on_synthetic_data(predictor: "HistogramPredictor",
         # 2) 그 중 sample_size명만 뽑아서 모델 입력으로 사용
         idx = np.random.choice(len(scores_all), sample_size, replace=False)
         sample_scores = np.sort(scores_all[idx])
-        sample_scores_norm = sample_scores / 100.0   # 0~1 정규화
+        sample_scores_norm = sample_scores / 100.0  # 0~1 정규화
 
         # 3) GT 히스토그램 (확률분포)
         true_hist = scores_to_hist(scores_all, num_bins=NUM_BINS)  # numpy [10]
@@ -200,10 +204,10 @@ def evaluate_on_synthetic_data(predictor: "HistogramPredictor",
         emd_list.append(emd)
 
     results = {
-        "num_classes": num_classes,
-        "MSE": float(np.mean(mse_list)),
-        "JS": float(np.mean(js_list)),
-        "EMD": float(np.mean(emd_list)),
+            "num_classes": num_classes,
+            "MSE"        : float(np.mean(mse_list)),
+            "JS"         : float(np.mean(js_list)),
+            "EMD"        : float(np.mean(emd_list)),
     }
     return results
 
@@ -243,11 +247,11 @@ class HistogramPredictor:
 
         # Create model
         model = FlexibleHistogramPredictor(
-            hidden_dim=config['hidden_dim'],
-            num_bins=10,
-            num_heads=config['num_heads'],
-            num_inducers=config['num_inducers'],
-            dropout=config['dropout']
+                hidden_dim=config['hidden_dim'],
+                num_bins=10,
+                num_heads=config['num_heads'],
+                num_inducers=config['num_inducers'],
+                dropout=config['dropout']
         )
 
         # Load weights
@@ -299,16 +303,16 @@ class HistogramPredictor:
 
         # Create result dictionary
         result = {
-            "0-10": int(histogram_values[0]) if total_students else float(histogram_values[0]),
-            "10-20": int(histogram_values[1]) if total_students else float(histogram_values[1]),
-            "20-30": int(histogram_values[2]) if total_students else float(histogram_values[2]),
-            "30-40": int(histogram_values[3]) if total_students else float(histogram_values[3]),
-            "40-50": int(histogram_values[4]) if total_students else float(histogram_values[4]),
-            "50-60": int(histogram_values[5]) if total_students else float(histogram_values[5]),
-            "60-70": int(histogram_values[6]) if total_students else float(histogram_values[6]),
-            "70-80": int(histogram_values[7]) if total_students else float(histogram_values[7]),
-            "80-90": int(histogram_values[8]) if total_students else float(histogram_values[8]),
-            "90-100": int(histogram_values[9]) if total_students else float(histogram_values[9]),
+                "0-10"  : int(histogram_values[0]) if total_students else float(histogram_values[0]),
+                "10-20" : int(histogram_values[1]) if total_students else float(histogram_values[1]),
+                "20-30" : int(histogram_values[2]) if total_students else float(histogram_values[2]),
+                "30-40" : int(histogram_values[3]) if total_students else float(histogram_values[3]),
+                "40-50" : int(histogram_values[4]) if total_students else float(histogram_values[4]),
+                "50-60" : int(histogram_values[5]) if total_students else float(histogram_values[5]),
+                "60-70" : int(histogram_values[6]) if total_students else float(histogram_values[6]),
+                "70-80" : int(histogram_values[7]) if total_students else float(histogram_values[7]),
+                "80-90" : int(histogram_values[8]) if total_students else float(histogram_values[8]),
+                "90-100": int(histogram_values[9]) if total_students else float(histogram_values[9]),
         }
 
         return result
@@ -316,11 +320,11 @@ class HistogramPredictor:
     def get_model_info(self) -> dict:
         """Get model information."""
         return {
-            "model_type": "SetTransformer",
-            "validation_loss": float(self.checkpoint['val_loss']),
-            "epoch": int(self.checkpoint['epoch']),
-            "config": self.checkpoint['config'],
-            "device": self.device
+                "model_type"     : "SetTransformer",
+                "validation_loss": float(self.checkpoint['val_loss']),
+                "epoch"          : int(self.checkpoint['epoch']),
+                "config"         : self.checkpoint['config'],
+                "device"         : self.device
         }
 
 

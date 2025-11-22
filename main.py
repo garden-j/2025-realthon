@@ -342,6 +342,7 @@ def predict_histogram(request: HistogramPredictRequest, db: Session = Depends(ge
             total_students=total
     )
 
+
 @app.get("/courses/{course_id}/advice", response_model=ReviewAnalysisResponse, tags=["AI Advice"])
 def get_course_advice(course_id: int, objective_grade: str, db: Session = Depends(get_db)):
     if not openai_client:
@@ -381,22 +382,23 @@ def get_course_advice(course_id: int, objective_grade: str, db: Session = Depend
             {course_reviews_str}
             """,
                 text={
-                    "verbosity": "low",
-                    "format": {
-                        "type": "json_schema",
-                        "name": "course_advice",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "assignment_difficulty": {"type": "integer"},
-                                "exam_difficulty": {"type": "integer"},
-                                "summary": {"type": "string"},
-                                "advice": {"type": "string"}
-                            },
-                            "required": ["assignment_difficulty", "exam_difficulty", "summary", "advice"],
-                            "additionalProperties": False
+                        "verbosity": "low",
+                        "format"   : {
+                                "type"  : "json_schema",
+                                "name"  : "course_advice",
+                                "schema": {
+                                        "type"                : "object",
+                                        "properties"          : {
+                                                "assignment_difficulty": {"type": "integer"},
+                                                "exam_difficulty"      : {"type": "integer"},
+                                                "summary"              : {"type": "string"},
+                                                "advice"               : {"type": "string"}
+                                        },
+                                        "required"            : ["assignment_difficulty", "exam_difficulty", "summary",
+                                                                 "advice"],
+                                        "additionalProperties": False
+                                }
                         }
-                    }
                 },
                 reasoning={"effort": "minimal"},
         )
@@ -417,7 +419,8 @@ def get_course_advice(course_id: int, objective_grade: str, db: Session = Depend
         result = json.loads(text)
         return ReviewAnalysisResponse(**result)
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"JSON Parse Error: {str(e)} - Response: {response.output_text[:200]}")
+        raise HTTPException(status_code=500,
+                            detail=f"JSON Parse Error: {str(e)} - Response: {response.output_text[:200]}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI Error: {str(e)}")
 
@@ -488,31 +491,32 @@ def get_semester_advice(
             --------- 수강평 끝 ---------
             """,
                 text={
-                    "verbosity": "low",
-                    "format": {
-                        "type": "json_schema",
-                        "name": "semester_plan",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "courses": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "course_index": {"type": "integer"},
-                                            "effort_percent": {"type": "integer"}
+                        "verbosity": "low",
+                        "format"   : {
+                                "type"  : "json_schema",
+                                "name"  : "semester_plan",
+                                "schema": {
+                                        "type"                : "object",
+                                        "properties"          : {
+                                                "courses"       : {
+                                                        "type" : "array",
+                                                        "items": {
+                                                                "type"                : "object",
+                                                                "properties"          : {
+                                                                        "course_index"  : {"type": "integer"},
+                                                                        "effort_percent": {"type": "integer"}
+                                                                },
+                                                                "required"            : ["course_index",
+                                                                                         "effort_percent"],
+                                                                "additionalProperties": False
+                                                        }
+                                                },
+                                                "overall_advice": {"type": "string"}
                                         },
-                                        "required": ["course_index", "effort_percent"],
+                                        "required"            : ["courses", "overall_advice"],
                                         "additionalProperties": False
-                                    }
-                                },
-                                "overall_advice": {"type": "string"}
-                            },
-                            "required": ["courses", "overall_advice"],
-                            "additionalProperties": False
+                                }
                         }
-                    }
                 },
                 reasoning={"effort": "minimal"},
         )
@@ -534,7 +538,8 @@ def get_semester_advice(
         return SemesterPlanResponse(**result)
 
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"JSON Parse Error: {str(e)} - Response: {response.output_text[:200]}")
+        raise HTTPException(status_code=500,
+                            detail=f"JSON Parse Error: {str(e)} - Response: {response.output_text[:200]}")
     except Exception as e:
         print(f"OpenAI Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"AI 분석 중 오류가 발생했습니다.")

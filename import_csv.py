@@ -9,10 +9,11 @@ DB_NAME = os.path.join(BASE_DIR, "hackathon.db")
 
 # 학수번호 -> 한글 강의명 매핑
 COURSE_NAME_MAP = {
-    "COSE111": "전산수학I",
-    "COSE341": "운영체제",
-    "COSE389": "기업가정신과리더십",
+        "COSE111": "전산수학I",
+        "COSE341": "운영체제",
+        "COSE389": "기업가정신과리더십",
 }
+
 
 def import_data():
     if not os.path.exists(CSV_FILE):
@@ -30,7 +31,7 @@ def import_data():
         with open(CSV_FILE, newline='', encoding='utf-8-sig') as f:
             # 헤더의 앞뒤 공백 제거 (skipinitialspace=True)
             reader = csv.DictReader(f, skipinitialspace=True)
-            
+
             # 헤더(컬럼명) 확인용 (디버깅)
             headers = reader.fieldnames
             print(f"ℹ️  감지된 컬럼: {headers}")
@@ -46,7 +47,7 @@ def import_data():
                 # 딕셔너리 키 접근 시 공백 제거 처리
                 course_code = row.get('course_code', '').strip()
                 review_content = row.get('review', '').strip()
-                
+
                 if not course_code or not review_content:
                     continue
 
@@ -63,31 +64,32 @@ def import_data():
                     # 2. 없으면 새로 생성 (기본 수강생 99명)
                     # print(f"🆕 새 강의 추가: {course_name} ({course_code})")
                     cursor.execute('''
-                        INSERT INTO courses (name, course_code, total_students)
-                        VALUES (?, ?, 99)
-                    ''', (course_name, course_code))
+                                   INSERT INTO courses (name, course_code, total_students)
+                                   VALUES (?, ?, 99)
+                                   ''', (course_name, course_code))
                     course_id = cursor.lastrowid
 
                 # 3. 리뷰 데이터 삽입
                 cursor.execute('''
-                    INSERT INTO course_reviews (course_id, content)
-                    VALUES (?, ?)
-                ''', (course_id, review_content))
-                
+                               INSERT INTO course_reviews (course_id, content)
+                               VALUES (?, ?)
+                               ''', (course_id, review_content))
+
                 count += 1
-                
+
                 if count % 100 == 0:
                     print(f"   ...{count}개 처리 중")
 
         conn.commit()
         print(f"✅ 총 {count}개의 리뷰 처리 완료!")
-        
+
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
         import traceback
         traceback.print_exc()
     finally:
         conn.close()
+
 
 if __name__ == "__main__":
     import_data()

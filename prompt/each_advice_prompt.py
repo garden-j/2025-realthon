@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 import pandas as pd
 from pydantic import BaseModel, Field  # ← 새로 추가
 
-
 load_dotenv()
 
 api_key = os.getenv("OPENAI_API_KEY")
@@ -17,22 +16,21 @@ course_reviews = []
 
 for review in reviews:
     course_reviews.append(
-        {
-            "course_id": 1,
-            "content": review,
-            "generosity": 0,
-            "id": len(course_reviews) + 1
-        }
+            {
+                    "course_id" : 1,
+                    "content"   : review,
+                    "generosity": 0,
+                    "id"        : len(course_reviews) + 1
+            }
     )
 
 course_reviews_str = "\n".join([f"{review['content']}" for review in course_reviews])
 
 objective_grade = "B+"
 
-
 response = client.responses.create(
-    model="gpt-5-mini",
-    input=f"""
+        model="gpt-5-mini",
+        input=f"""
     목표성적: {objective_grade}
     이건 이전 수강자들의 강의평 입니다. 각 강의평은 과목 ID와 함께 주어집니다.
     강의평에서 과제의 난이도와 관련한 정보를 추출해서 난이도를 정수형으로 추출해서 반환해주세요.
@@ -53,10 +51,10 @@ response = client.responses.create(
     비중이 크고 작은 것을 판단할 때에는 강의평에 언급된 경우에 대한 내용을 참고해주세요.
     {course_reviews_str}
     """,
-    text={
-        "verbosity": "low",
-    },
-    reasoning={"effort": "low"},
+        text={
+                "verbosity": "low",
+        },
+        reasoning={"effort": "low"},
 )
 
 print(response.output_text)
